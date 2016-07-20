@@ -45,7 +45,6 @@ func (d *Dir) delObject(leaf string) {
 
 // read the directory
 func (d *Dir) readDir() error {
-	fs.Debug(d.f, "Dir.readDir(%q)", d.path)
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.read {
@@ -94,7 +93,7 @@ var _ fusefs.Node = (*Dir)(nil)
 
 // Attr updates the attribes of a directory
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
-	fs.Debug(d.f, "Dir.Attr(%q)", d.path)
+	fs.Debug(d.path, "Dir.Attr")
 	a.Mode = os.ModeDir | dirPerms
 	return nil
 }
@@ -108,21 +107,32 @@ var _ fusefs.NodeRequestLookuper = (*Dir)(nil)
 // name does not exist in the directory, Lookup should return ENOENT.
 //
 // Lookup need not to handle the names "." and "..".
-func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (fusefs.Node, error) {
+func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (file fusefs.Node, err error) {
 	path := path.Join(d.path, req.Name)
-	fs.Debug(d.f, "Dir.Lookup(%q)", path)
+	fs.Debug(path, "Dir.Lookup")
 	item, err := d.lookup(req.Name)
 	if err != nil {
+		fs.ErrorLog(path, "Dir.Lookup error: %v", err)
 		return nil, err
 	}
+	var what string
 	switch x := item.(type) {
 	case fs.Object:
-		return newFile(d, x), nil
+		what = "file"
+		file, err = newFile(d, x), nil
 	case *fs.Dir:
-		return newDir(d.f, x.Remote()), nil
+		what = "directory"
+		file, err = newDir(d.f, x.Remote()), nil
 	default:
-		return nil, errors.Errorf("unknown type %T", item)
+		what = "unknown"
+		err = errors.Errorf("unknown type %T", item)
 	}
+	if err != nil {
+		fs.ErrorLog(path, "Dir.Lookup on %q error: %v", what, err)
+	} else {
+		fs.Debug(path, "Dir.Lookup on %q OK", what)
+	}
+	return file, err
 }
 
 // Check interface satisfied
@@ -130,9 +140,10 @@ var _ fusefs.HandleReadDirAller = (*Dir)(nil)
 
 // ReadDirAll reads the contents of the directory
 func (d *Dir) ReadDirAll(ctx context.Context) (dirents []fuse.Dirent, err error) {
-	fs.Debug(d.f, "Dir.ReadDirAll(%q)", d.path)
+	fs.Debug(d.path, "Dir.ReadDirAll")
 	err = d.readDir()
 	if err != nil {
+		fs.Debug(d.path, "Dir.ReadDirAll error: %v", err)
 		return nil, err
 	}
 	d.mu.RLock()
@@ -153,10 +164,13 @@ func (d *Dir) ReadDirAll(ctx context.Context) (dirents []fuse.Dirent, err error)
 				Name: path.Base(x.Remote()),
 			}
 		default:
-			return nil, errors.Errorf("unknown type %T", item)
+			err = errors.Errorf("unknown type %T", item)
+			fs.ErrorLog(d.path, "Dir.ReadDirAll error: %v", err)
+			return nil, err
 		}
 		dirents = append(dirents, dirent)
 	}
+	fs.Debug(d.path, "Dir.ReadDirAll OK with %d entries", len(dirents))
 	return dirents, nil
 }
 
@@ -165,13 +179,15 @@ var _ fusefs.NodeCreater = (*Dir)(nil)
 // Create makes a new file
 func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.CreateResponse) (fusefs.Node, fusefs.Handle, error) {
 	path := path.Join(d.path, req.Name)
-	fs.Debug(d.f, "Dir.Create(%q)", path)
+	fs.Debug(path, "Dir.Create")
 	src := newCreateInfo(d.f, path)
 	file := newFile(d, nil)
 	fh, err := newWriteFileHandle(d, file, src)
 	if err != nil {
+		fs.ErrorLog(path, "Dir.Create error: %v", err)
 		return nil, nil, err
 	}
+	fs.Debug(path, "Dir.Create OK")
 	return file, fh, nil
 }
 
@@ -182,13 +198,14 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fusefs.Node, e
 	// We just pretend to have created the directory - rclone will
 	// actually create the directory if we write files into it
 	path := path.Join(d.path, req.Name)
-	fs.Debug(d.f, "Dir.Mkdir(%q)", path)
+	fs.Debug(path, "Dir.Mkdir")
 	fsDir := &fs.Dir{
 		Name: path,
 		When: time.Now(),
 	}
 	d.addObject(fsDir)
 	dir := newDir(d.f, path)
+	fs.Debug(path, "Dir.Mkdir OK")
 	return dir, nil
 }
 
@@ -220,15 +237,17 @@ var _ fusefs.NodeRemover = (*Dir)(nil)
 // may correspond to a file (unlink) or to a directory (rmdir).
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	path := path.Join(d.path, req.Name)
-	fs.Debug(d.f, "Dir.Remove(%q)", path)
+	fs.Debug(path, "Dir.Remove")
 	item, err := d.lookup(req.Name)
 	if err != nil {
+		fs.ErrorLog(path, "Dir.Remove error: %v", err)
 		return err
 	}
 	switch x := item.(type) {
 	case fs.Object:
 		err = x.Remove()
 		if err != nil {
+			fs.ErrorLog(path, "Dir.Remove file error: %v", err)
 			return err
 		}
 	case *fs.Dir:
@@ -238,16 +257,20 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		// Check directory is empty
 		empty, err := d.dirEmpty(path)
 		if err != nil {
+			fs.ErrorLog(path, "Dir.Remove dir error: %v", err)
 			return err
 		}
 		if !empty {
 			// return fuse.ENOTEMPTY - doesn't exist though so use EEXIST
+			fs.ErrorLog(path, "Dir.Remove not empty")
 			return fuse.EEXIST
 		}
 	default:
+		fs.ErrorLog(path, "Dir.Remove unknown type %T", item)
 		return errors.Errorf("unknown type %T", item)
 	}
 	// Remove the item from the directory listing
 	d.delObject(req.Name)
+	fs.Debug(path, "Dir.Remove OK")
 	return nil
 }

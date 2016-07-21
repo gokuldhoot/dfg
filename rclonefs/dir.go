@@ -274,3 +274,53 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	fs.Debug(path, "Dir.Remove OK")
 	return nil
 }
+
+// Check interface satisfied
+var _ fusefs.NodeRenamer = (*Dir)(nil)
+
+// Rename the file
+func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fusefs.Node) error {
+	oldPath := path.Join(d.path, req.OldName)
+	destDir, ok := newDir.(*Dir)
+	if !ok {
+		err := errors.Errorf("Unknown Dir type %T", newDir)
+		fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
+		return err
+	}
+	newPath := path.Join(destDir.path, req.NewName)
+	fs.Debug(oldPath, "Dir.Rename to %q", newPath)
+	do, ok := d.f.(fs.Mover)
+	if !ok {
+		err := errors.Errorf("Fs %q can't Move files", d.f)
+		fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
+		return err
+	}
+	oldItem, err := d.lookup(req.OldName)
+	if err != nil {
+		fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
+		return err
+	}
+	oldObject, ok := oldItem.(fs.Object)
+	if !ok {
+		err := errors.Errorf("%q is a directory", oldPath)
+		fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
+		return err
+	}
+	newObject, err := do.Move(oldObject, newPath)
+	if err != nil {
+		fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
+		return err
+	}
+
+	// Show moved - delete from old dir and add to new
+	d.delObject(req.OldName)
+	destDir.addObject(newObject)
+
+	// FIXME use DirMover to move a directory?
+	// or maybe use MoveDir which can move anything
+	// fallback to Copy/Delete if no Move?
+	// if dir is empty then can move it
+
+	fs.ErrorLog(newPath, "Dir.Rename renamed from %q", oldPath)
+	return nil
+}

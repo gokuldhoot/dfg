@@ -2,9 +2,33 @@
 
 [![Logo](http://rclone.org/img/rclone-120x120.png)](http://rclone.org/)
 
-This implements a FUSE mounting program for rclone.
+rclonefs allows Linux and macOS to mount any of Rclone's cloud storage
+systems as a file system with FUSE including
+
+  * Google Drive
+  * Amazon S3
+  * Openstack Swift / Rackspace cloud files / Memset Memstore
+  * Dropbox
+  * Google Cloud Storage
+  * Amazon Drive
+  * Microsoft One Drive
+  * Hubic
+  * Backblaze B2
+  * Yandex Disk
+  * The local filesystem
+
+Features
+
+  * MD5/SHA1 hashes checked on upload and download for file integrity
+  * Timestamps preserved on files
+  * Server side rename (or copy/delete) where possible
+  * Files stored as native objects
+  * Directories cached in memory
+  * Files not buffered in memory
 
 ***WARNING*** experimental!
+
+## Usage ##
 
 First set up your remote using `rclone config`.  Check it works with `rclone ls` etc.
 
@@ -22,19 +46,21 @@ Or with OS X
 
 rclonefs has some specific options which may help
 
-    --no-modtime - don't read the modification time
-    --debug-fuse - print lots of FUSE debugging
+    `-v`           - print debugging
+    `--no-modtime` - don't read the modification time
+    `--debug-fuse` - print lots of FUSE debugging (needs `-v`)
 
 As well as lots of rclone's options.
 
 ## Limitations ##
 
-This can only read and write files sequentially.  So don't try running
-a database on rclonefs!
+This can only read files seqentially, or write files sequentially.  It
+can't read and write or seek in files.
 
 rclonefs inherits rclone's directory handling.  In rclone's world
 directories don't really exist.  This means that empty directories
-will have a tendency to disappear once they fall out of the cache.
+will have a tendency to disappear once they fall out of the directory
+cache.
 
 The bucket based FSes (eg swift, s3, google compute storage, b2) won't
 work from the root - you will need to specify a bucket, or a path
@@ -47,3 +73,10 @@ as will `swift:bucket/path`.
   * All the remotes should work for read, but some may not for write
     * those which need to know the size in advance won't - eg B2
     * maybe should pass in size as -1 to mean work it out
+
+## TODO ##
+
+  * Tests
+  * Check hashes on upload/download
+  * Preserve timestamps
+  * Move directories

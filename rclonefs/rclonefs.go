@@ -83,7 +83,22 @@ func main() {
 
 	path := pflag.Arg(0)
 	mountpoint := pflag.Arg(1)
-	if err := mount(path, mountpoint); err != nil {
-		log.Fatal(err)
+
+	// Make the remote
+	f, err := fs.NewFs(path)
+	if err != nil {
+		log.Fatalf("Failed to make rclone remote: %v", err)
+	}
+
+	// Mount it
+	errChan, err := mount(f, mountpoint)
+	if err != nil {
+		log.Fatalf("Failed to mount FUSE fs: %v", err)
+	}
+
+	// Wait for umount
+	err = <-errChan
+	if err != nil {
+		log.Fatalf("Failed to umount FUSE fs: %v", err)
 	}
 }

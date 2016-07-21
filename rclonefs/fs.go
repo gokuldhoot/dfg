@@ -3,8 +3,6 @@
 package main
 
 import (
-	"log"
-
 	"bazil.org/fuse"
 	fusefs "bazil.org/fuse/fs"
 	"github.com/ncw/rclone/fs"
@@ -30,36 +28,38 @@ func (f *FS) Root() (fusefs.Node, error) {
 	return newDir(f.f, ""), nil
 }
 
-// mount the file system - doesn't return until the mount is finished with
-func mount(remote, mountpoint string) error {
-	f, err := fs.NewFs(remote)
-	if err != nil {
-		return err
-	}
-
+// mount the file system
+//
+// The mount point will be ready when this returns.
+//
+// returns an error, and an error channel for the serve process to
+// report an error when fusermount is called.
+func mount(f fs.Fs, mountpoint string) (<-chan error, error) {
 	c, err := fuse.Mount(mountpoint)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer func() {
-		err := c.Close()
-		if err != nil {
-			log.Printf("Close returned error: %v", err)
-		}
-	}()
 
 	filesys := &FS{
 		f: f,
 	}
-	if err := fusefs.Serve(c, filesys); err != nil {
-		return err
-	}
+
+	// Serve the mount point in the background returning error to errChan
+	errChan := make(chan error, 1)
+	go func() {
+		err := fusefs.Serve(c, filesys)
+		closeErr := c.Close()
+		if err == nil {
+			err = closeErr
+		}
+		errChan <- err
+	}()
 
 	// check if the mount process has an error to report
 	<-c.Ready
 	if err := c.MountError; err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return errChan, nil
 }

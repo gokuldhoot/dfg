@@ -129,6 +129,7 @@ var _ fusefs.Node = (*Dir)(nil)
 func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	fs.Debug(d.path, "Dir.Attr")
 	a.Mode = os.ModeDir | dirPerms
+	// FIXME include Valid so get some caching? Also mtime
 	return nil
 }
 

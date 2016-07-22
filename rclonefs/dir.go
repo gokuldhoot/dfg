@@ -13,13 +13,23 @@ import (
 	"golang.org/x/net/context"
 )
 
+// DirEntry describes the contents of a directory entry
+//
+// It can be a file or a directory
+//
+// node may be nil, but o may not
+type DirEntry struct {
+	o    fs.BasicInfo
+	node fusefs.Node
+}
+
 // Dir represents a directory entry
 type Dir struct {
 	f     fs.Fs
 	path  string
 	mu    sync.RWMutex // protects the following
 	read  bool
-	items map[string]fs.BasicInfo
+	items map[string]*DirEntry
 }
 
 func newDir(f fs.Fs, path string) *Dir {
@@ -30,10 +40,17 @@ func newDir(f fs.Fs, path string) *Dir {
 }
 
 // addObject adds a new object or directory to the directory
-func (d *Dir) addObject(o fs.BasicInfo) {
+//
+// note that we add new objects rather than updating old ones
+func (d *Dir) addObject(o fs.BasicInfo, node fusefs.Node) *DirEntry {
+	item := &DirEntry{
+		o:    o,
+		node: node,
+	}
 	d.mu.Lock()
-	d.items[path.Base(o.Remote())] = o
+	d.items[path.Base(o.Remote())] = item
 	d.mu.Unlock()
+	return item
 }
 
 // delObject removes an object from the directory
@@ -58,14 +75,20 @@ func (d *Dir) readDir() error {
 		return err
 	}
 	// Cache the items by name
-	d.items = make(map[string]fs.BasicInfo, len(objs)+len(dirs))
+	d.items = make(map[string]*DirEntry, len(objs)+len(dirs))
 	for _, obj := range objs {
 		name := path.Base(obj.Remote())
-		d.items[name] = obj
+		d.items[name] = &DirEntry{
+			o:    obj,
+			node: nil,
+		}
 	}
 	for _, dir := range dirs {
 		name := path.Base(dir.Remote())
-		d.items[name] = dir
+		d.items[name] = &DirEntry{
+			o:    dir,
+			node: nil,
+		}
 	}
 	d.read = true
 	return nil
@@ -74,7 +97,7 @@ func (d *Dir) readDir() error {
 // lookup a single item in the directory
 //
 // returns fuse.ENOENT if not found.
-func (d *Dir) lookup(leaf string) (fs.BasicInfo, error) {
+func (d *Dir) lookup(leaf string) (*DirEntry, error) {
 	err := d.readDir()
 	if err != nil {
 		return nil, err
@@ -88,6 +111,17 @@ func (d *Dir) lookup(leaf string) (fs.BasicInfo, error) {
 	return item, nil
 }
 
+// Check to see if a directory is empty
+func (d *Dir) isEmpty() (bool, error) {
+	err := d.readDir()
+	if err != nil {
+		return false, err
+	}
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return len(d.items) == 0, nil
+}
+
 // Check interface satsified
 var _ fusefs.Node = (*Dir)(nil)
 
@@ -96,6 +130,31 @@ func (d *Dir) Attr(ctx context.Context, a *fuse.Attr) error {
 	fs.Debug(d.path, "Dir.Attr")
 	a.Mode = os.ModeDir | dirPerms
 	return nil
+}
+
+// lookupNode calls lookup then makes sure the node is not nil in the DirEntry
+func (d *Dir) lookupNode(leaf string) (item *DirEntry, err error) {
+	item, err = d.lookup(leaf)
+	if err != nil {
+		return nil, err
+	}
+	if item.node != nil {
+		return item, nil
+	}
+	var node fusefs.Node
+	switch x := item.o.(type) {
+	case fs.Object:
+		node, err = newFile(d, x), nil
+	case *fs.Dir:
+		node, err = newDir(d.f, x.Remote()), nil
+	default:
+		err = errors.Errorf("unknown type %T", item)
+	}
+	if err != nil {
+		return nil, err
+	}
+	item = d.addObject(item.o, node)
+	return item, err
 }
 
 // Check interface satisfied
@@ -107,32 +166,16 @@ var _ fusefs.NodeRequestLookuper = (*Dir)(nil)
 // name does not exist in the directory, Lookup should return ENOENT.
 //
 // Lookup need not to handle the names "." and "..".
-func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (file fusefs.Node, err error) {
+func (d *Dir) Lookup(ctx context.Context, req *fuse.LookupRequest, resp *fuse.LookupResponse) (node fusefs.Node, err error) {
 	path := path.Join(d.path, req.Name)
 	fs.Debug(path, "Dir.Lookup")
-	item, err := d.lookup(req.Name)
+	item, err := d.lookupNode(req.Name)
 	if err != nil {
 		fs.ErrorLog(path, "Dir.Lookup error: %v", err)
 		return nil, err
 	}
-	var what string
-	switch x := item.(type) {
-	case fs.Object:
-		what = "file"
-		file, err = newFile(d, x), nil
-	case *fs.Dir:
-		what = "directory"
-		file, err = newDir(d.f, x.Remote()), nil
-	default:
-		what = "unknown"
-		err = errors.Errorf("unknown type %T", item)
-	}
-	if err != nil {
-		fs.ErrorLog(path, "Dir.Lookup on %q error: %v", what, err)
-	} else {
-		fs.Debug(path, "Dir.Lookup on %q OK", what)
-	}
-	return file, err
+	fs.Debug(path, "Dir.Lookup OK")
+	return item.node, nil
 }
 
 // Check interface satisfied
@@ -150,7 +193,7 @@ func (d *Dir) ReadDirAll(ctx context.Context) (dirents []fuse.Dirent, err error)
 	defer d.mu.RUnlock()
 	for _, item := range d.items {
 		var dirent fuse.Dirent
-		switch x := item.(type) {
+		switch x := item.o.(type) {
 		case fs.Object:
 			dirent = fuse.Dirent{
 				// Inode FIXME ???
@@ -181,6 +224,7 @@ func (d *Dir) Create(ctx context.Context, req *fuse.CreateRequest, resp *fuse.Cr
 	path := path.Join(d.path, req.Name)
 	fs.Debug(path, "Dir.Create")
 	src := newCreateInfo(d.f, path)
+	// This gets added to the directory when the file is written
 	file := newFile(d, nil)
 	fh, err := newWriteFileHandle(d, file, src)
 	if err != nil {
@@ -203,31 +247,10 @@ func (d *Dir) Mkdir(ctx context.Context, req *fuse.MkdirRequest) (fusefs.Node, e
 		Name: path,
 		When: time.Now(),
 	}
-	d.addObject(fsDir)
 	dir := newDir(d.f, path)
+	d.addObject(fsDir, dir)
 	fs.Debug(path, "Dir.Mkdir OK")
 	return dir, nil
-}
-
-// dirEmpty returns if the directory path passed in is empty or not
-func (d *Dir) dirEmpty(path string) (empty bool, err error) {
-	lister := fs.NewLister().SetLevel(1).Start(d.f, path)
-	defer lister.Finished()
-	obj, dir, err := lister.Get()
-	switch {
-	case err != nil:
-		if err == fs.ErrorDirNotFound {
-			err = nil
-		}
-		empty = true
-	case obj != nil:
-		empty = false
-	case dir != nil:
-		empty = false
-	default:
-		empty = true
-	}
-	return empty, err
 }
 
 var _ fusefs.NodeRemover = (*Dir)(nil)
@@ -238,12 +261,12 @@ var _ fusefs.NodeRemover = (*Dir)(nil)
 func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 	path := path.Join(d.path, req.Name)
 	fs.Debug(path, "Dir.Remove")
-	item, err := d.lookup(req.Name)
+	item, err := d.lookupNode(req.Name)
 	if err != nil {
 		fs.ErrorLog(path, "Dir.Remove error: %v", err)
 		return err
 	}
-	switch x := item.(type) {
+	switch x := item.o.(type) {
 	case fs.Object:
 		err = x.Remove()
 		if err != nil {
@@ -254,8 +277,9 @@ func (d *Dir) Remove(ctx context.Context, req *fuse.RemoveRequest) error {
 		// Do nothing for deleting directory - rclone can't
 		// currently remote a random directory
 		//
-		// Check directory is empty
-		empty, err := d.dirEmpty(path)
+		// Check directory is empty first though
+		dir := item.node.(*Dir)
+		empty, err := dir.isEmpty()
 		if err != nil {
 			fs.ErrorLog(path, "Dir.Remove dir error: %v", err)
 			return err
@@ -289,32 +313,54 @@ func (d *Dir) Rename(ctx context.Context, req *fuse.RenameRequest, newDir fusefs
 	}
 	newPath := path.Join(destDir.path, req.NewName)
 	fs.Debug(oldPath, "Dir.Rename to %q", newPath)
-	do, ok := d.f.(fs.Mover)
-	if !ok {
-		err := errors.Errorf("Fs %q can't Move files", d.f)
-		fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
-		return err
-	}
-	oldItem, err := d.lookup(req.OldName)
+	oldItem, err := d.lookupNode(req.OldName)
 	if err != nil {
 		fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
 		return err
 	}
-	oldObject, ok := oldItem.(fs.Object)
-	if !ok {
-		err := errors.Errorf("%q is a directory", oldPath)
-		fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
-		return err
-	}
-	newObject, err := do.Move(oldObject, newPath)
-	if err != nil {
-		fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
+	var newObj fs.BasicInfo
+	switch x := oldItem.o.(type) {
+	case fs.Object:
+		oldObject := x
+		do, ok := d.f.(fs.Mover)
+		if !ok {
+			err := errors.Errorf("Fs %q can't Move files", d.f)
+			fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
+			return err
+		}
+		newObject, err := do.Move(oldObject, newPath)
+		if err != nil {
+			fs.ErrorLog(oldPath, "Dir.Rename error: %v", err)
+			return err
+		}
+		newObj = newObject
+	case *fs.Dir:
+		oldDir := oldItem.node.(*Dir)
+		empty, err := oldDir.isEmpty()
+		if err != nil {
+			fs.ErrorLog(oldPath, "Dir.Rename dir error: %v", err)
+			return err
+		}
+		if !empty {
+			// return fuse.ENOTEMPTY - doesn't exist though so use EEXIST
+			fs.ErrorLog(oldPath, "Dir.Rename can't rename non empty directory")
+			return fuse.EEXIST
+		}
+		newObj = &fs.Dir{
+			Name: newPath,
+			When: time.Now(),
+		}
+	default:
+		err = errors.Errorf("unknown type %T", oldItem)
+		fs.ErrorLog(d.path, "Dir.ReadDirAll error: %v", err)
 		return err
 	}
 
 	// Show moved - delete from old dir and add to new
 	d.delObject(req.OldName)
-	destDir.addObject(newObject)
+	destDir.addObject(newObj, nil)
+
+	// FIXME need to flush the dir also
 
 	// FIXME use DirMover to move a directory?
 	// or maybe use MoveDir which can move anything

@@ -56,7 +56,7 @@ func (f *File) written(n int64) {
 // Update the object when written
 func (f *File) setObject(o fs.Object) {
 	f.o = o
-	f.d.addObject(o)
+	f.d.addObject(o, f)
 }
 
 // Check interface satisfied

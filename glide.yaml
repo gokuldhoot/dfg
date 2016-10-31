@@ -1,0 +1,58 @@
+package: github.com/ncw/rclone
+import:
+- package: bazil.org/fuse
+  subpackages:
+  - fs
+- package: github.com/Unknwon/goconfig
+- package: github.com/VividCortex/ewma
+- package: github.com/aws/aws-sdk-go
+  subpackages:
+  - aws
+  - aws/awserr
+  - aws/corehandlers
+  - aws/credentials
+  - aws/credentials/ec2rolecreds
+  - aws/ec2metadata
+  - aws/request
+  - aws/session
+  - service/s3
+  - service/s3/s3manager
+- package: github.com/ncw/go-acd
+- package: github.com/ncw/swift
+- package: github.com/pkg/errors
+- package: github.com/rfjakob/eme
+- package: github.com/skratchdot/open-golang
+  subpackages:
+  - open
+- package: github.com/spf13/cobra
+  subpackages:
+  - doc
+- package: github.com/spf13/pflag
+- package: github.com/stacktic/dropbox
+- package: github.com/stretchr/testify
+  subpackages:
+  - assert
+  - require
+- package: github.com/tsenart/tb
+- package: golang.org/x/crypto
+  subpackages:
+  - nacl/secretbox
+  - scrypt
+  - ssh/terminal
+- package: golang.org/x/net
+  subpackages:
+  - context
+- package: golang.org/x/oauth2
+  subpackages:
+  - google
+- package: golang.org/x/sys
+  subpackages:
+  - unix
+- package: golang.org/x/text
+  subpackages:
+  - unicode/norm
+- package: google.golang.org/api
+  subpackages:
+  - drive/v2
+  - googleapi
+  - storage/v1

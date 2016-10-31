@@ -11,10 +11,8 @@ install:
   - echo %PATH%
   - echo %GOPATH%
   - go version
-  - go env
-  - go get -t -d ./...
+  - mingw32-make vars
+  - mingw32-make build_dep
 
 build_script:
- - go vet ./...
- - go test -cpu=2 ./...
- - go test -cpu=2 -short -race ./...
+  - mingw32-make quicktest

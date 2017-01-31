@@ -57,3 +57,4 @@ Contributors
   * Brandur <brandur@mutelight.org>
   * Dario Giovannetti <dev@dariogiovannetti.net>
   * Károly Oláh <okaresz@aol.com>
+  * Jack Schmidt <github@mowsey.org>

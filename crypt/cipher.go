@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"strconv"
 	"sync"
 	"unicode/utf8"
 
@@ -49,6 +50,8 @@ var (
 	ErrorNotAnEncryptedFile      = errors.New("not an encrypted file - no \"" + encryptedSuffix + "\" suffix")
 	ErrorBadSeek                 = errors.New("Seek beyond end of file")
 	defaultSalt                  = []byte{0xA8, 0x0D, 0xF4, 0x3A, 0x8F, 0xBD, 0x03, 0x08, 0xA7, 0xCA, 0xB8, 0x3E, 0x58, 0x1F, 0x86, 0xB1}
+	obfuscCharSet		     = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,-=_! "
+	obfuscLen		     = len(obfuscCharSet)
 )
 
 // Global variables
@@ -95,6 +98,7 @@ type NameEncryptionMode int
 const (
 	NameEncryptionOff NameEncryptionMode = iota
 	NameEncryptionStandard
+	NameEncryptionObfuscated
 )
 
 // NewNameEncryptionMode turns a string into a NameEncryptionMode
@@ -105,6 +109,8 @@ func NewNameEncryptionMode(s string) (mode NameEncryptionMode, err error) {
 		mode = NameEncryptionOff
 	case "standard":
 		mode = NameEncryptionStandard
+	case "obfuscate":
+		mode = NameEncryptionObfuscated
 	default:
 		err = errors.Errorf("Unknown file name encryption mode %q", s)
 	}
@@ -118,6 +124,8 @@ func (mode NameEncryptionMode) String() (out string) {
 		out = "off"
 	case NameEncryptionStandard:
 		out = "standard"
+	case NameEncryptionObfuscated:
+		out = "obfuscate"
 	default:
 		out = fmt.Sprintf("Unknown mode #%d", mode)
 	}
@@ -284,11 +292,61 @@ func (c *cipher) decryptSegment(ciphertext string) (string, error) {
 	return string(plaintext), err
 }
 
+// Simple obfuscation routines
+// FIXME - implement!
+func obfuscateRot(in string,dir int) string {
+	var result string
+	for i := 0; i<len(in); i++ {
+		c := in[i]
+		pos := strings.Index(obfuscCharSet, string(c))
+
+		if pos != -1 {
+			pos=(pos+dir)%obfuscLen
+			if (pos < 0) { pos += obfuscLen }
+			c=obfuscCharSet[pos]
+		}
+
+		result+=string(c)
+	}
+
+	return result
+}
+
+func (c *cipher) obfuscateSegment(plaintext string) string {
+	if plaintext == "" {
+		return ""
+	}
+	var dir int
+	// Calculate a simple rotation based on the filename
+	for i:= 0; i<len(plaintext); i++ { dir += int(plaintext[i]) }
+	dir = dir%obfuscLen
+	out:=obfuscateRot(plaintext,dir)
+	return strconv.Itoa(dir) + "." + out
+}
+
+func (c *cipher) deobfuscateSegment(ciphertext string) (string, error) {
+	if ciphertext == "" {
+		return "",nil
+	}
+	pos := strings.Index(ciphertext,".")
+	if pos == -1 { return "", ErrorNotAnEncryptedFile }  // No .
+	num := ciphertext[:pos]
+	dir,err:=strconv.Atoi(num)
+	if err!=nil {
+		return "", ErrorNotAnEncryptedFile // Not a number
+	}
+	return obfuscateRot(ciphertext[pos+1:],-dir),nil
+}
+
 // encryptFileName encrypts a file path
 func (c *cipher) encryptFileName(in string) string {
 	segments := strings.Split(in, "/")
 	for i := range segments {
-		segments[i] = c.encryptSegment(segments[i])
+		if c.mode == NameEncryptionStandard {
+			segments[i] = c.encryptSegment(segments[i])
+		} else {
+			segments[i] = c.obfuscateSegment(segments[i])
+		}
 	}
 	return strings.Join(segments, "/")
 }
@@ -314,7 +372,12 @@ func (c *cipher) decryptFileName(in string) (string, error) {
 	segments := strings.Split(in, "/")
 	for i := range segments {
 		var err error
-		segments[i], err = c.decryptSegment(segments[i])
+                if c.mode == NameEncryptionStandard {
+			segments[i], err = c.decryptSegment(segments[i])
+                } else {
+			segments[i], err = c.deobfuscateSegment(segments[i])
+                }
+
 		if err != nil {
 			return "", err
 		}

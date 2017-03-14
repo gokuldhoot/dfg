@@ -293,7 +293,6 @@ func (c *cipher) decryptSegment(ciphertext string) (string, error) {
 }
 
 // Simple obfuscation routines
-// FIXME - implement!
 func obfuscateRot(in string,dir int) string {
 	var result string
 	for i := 0; i<len(in); i++ {
@@ -317,8 +316,10 @@ func (c *cipher) obfuscateSegment(plaintext string) string {
 		return ""
 	}
 	var dir int
-	// Calculate a simple rotation based on the filename
+	// Calculate a simple rotation based on the filename and
+	// the dataKey
 	for i:= 0; i<len(plaintext); i++ { dir += int(plaintext[i]) }
+	for i:= 0; i<len(c.dataKey); i++ { dir += int(c.dataKey[i]) }
 	dir = dir%(obfuscLen/2-1)+1  // Ensure we don't map a->A etc
 	out:=obfuscateRot(plaintext,dir)
 	return strconv.Itoa(dir) + "." + out

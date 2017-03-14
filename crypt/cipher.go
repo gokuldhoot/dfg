@@ -50,7 +50,7 @@ var (
 	ErrorNotAnEncryptedFile      = errors.New("not an encrypted file - no \"" + encryptedSuffix + "\" suffix")
 	ErrorBadSeek                 = errors.New("Seek beyond end of file")
 	defaultSalt                  = []byte{0xA8, 0x0D, 0xF4, 0x3A, 0x8F, 0xBD, 0x03, 0x08, 0xA7, 0xCA, 0xB8, 0x3E, 0x58, 0x1F, 0x86, 0xB1}
-	obfuscCharSet		     = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz.,-=_! "
+	obfuscCharSet		     = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
 	obfuscLen		     = len(obfuscCharSet)
 )
 
@@ -319,7 +319,7 @@ func (c *cipher) obfuscateSegment(plaintext string) string {
 	var dir int
 	// Calculate a simple rotation based on the filename
 	for i:= 0; i<len(plaintext); i++ { dir += int(plaintext[i]) }
-	dir = dir%obfuscLen
+	dir = dir%(obfuscLen/2-1)+1  // Ensure we don't map a->A etc
 	out:=obfuscateRot(plaintext,dir)
 	return strconv.Itoa(dir) + "." + out
 }

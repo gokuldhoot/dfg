@@ -317,9 +317,9 @@ func (c *cipher) obfuscateSegment(plaintext string) string {
 	}
 	var dir int
 	// Calculate a simple rotation based on the filename and
-	// the dataKey
+	// the nameKey
 	for i:= 0; i<len(plaintext); i++ { dir += int(plaintext[i]) }
-	for i:= 0; i<len(c.dataKey); i++ { dir += int(c.dataKey[i]) }
+	for i:= 0; i<len(c.nameKey); i++ { dir += int(c.nameKey[i]) }
 	dir = dir%(obfuscLen/2-1)+1  // Ensure we don't map a->A etc
 	out:=obfuscateRot(plaintext,dir)
 	return strconv.Itoa(dir) + "." + out

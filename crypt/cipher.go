@@ -50,8 +50,9 @@ var (
 	ErrorNotAnEncryptedFile      = errors.New("not an encrypted file - no \"" + encryptedSuffix + "\" suffix")
 	ErrorBadSeek                 = errors.New("Seek beyond end of file")
 	defaultSalt                  = []byte{0xA8, 0x0D, 0xF4, 0x3A, 0x8F, 0xBD, 0x03, 0x08, 0xA7, 0xCA, 0xB8, 0x3E, 0x58, 0x1F, 0x86, 0xB1}
-	obfuscCharSet		     = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
-	obfuscLen		     = len(obfuscCharSet)
+	obfuscASCII		     = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+	obfuscASCIILen		     = len(obfuscASCII)
+	obfuscQuote		     = "!"
 )
 
 // Global variables
@@ -293,36 +294,83 @@ func (c *cipher) decryptSegment(ciphertext string) (string, error) {
 }
 
 // Simple obfuscation routines
-func obfuscateRot(in string,dir int) string {
-	var result string
-	for i := 0; i<len(in); i++ {
-		c := in[i]
-		pos := strings.Index(obfuscCharSet, string(c))
-
-		if pos != -1 {
-			pos=(pos+dir)%obfuscLen
-			if (pos < 0) { pos += obfuscLen }
-			c=obfuscCharSet[pos]
-		}
-
-		result+=string(c)
-	}
-
-	return result
-}
 
 func (c *cipher) obfuscateSegment(plaintext string) string {
 	if plaintext == "" {
 		return ""
 	}
-	var dir int
+
+	// If the string isn't valid UTF8 then don't rotate; just
+	// prepend a 0.
+	if (!utf8.ValidString(plaintext)) {
+		return "0."+plaintext
+	}
+
 	// Calculate a simple rotation based on the filename and
 	// the nameKey
-	for i:= 0; i<len(plaintext); i++ { dir += int(plaintext[i]) }
+	var dir int
+	for _,runeValue := range plaintext {
+		dir += int(runeValue)
+	}
+	dir = dir%256
+
+	// We'll use this number to store in the result filename...
+	result := strconv.Itoa(dir) + "."
+
+	// but we'll augment it with the nameKey for real calculation
 	for i:= 0; i<len(c.nameKey); i++ { dir += int(c.nameKey[i]) }
-	dir = dir%(obfuscLen/2-1)+1  // Ensure we don't map a->A etc
-	out:=obfuscateRot(plaintext,dir)
-	return strconv.Itoa(dir) + "." + out
+	dir = dir%127
+
+	// Now for each character, depending on the range it is in
+	// we will actually rotate a different amount
+	var newChar string
+
+	for _,runeValue := range plaintext {
+		switch {
+		case string(runeValue) == obfuscQuote:
+			// Quote the Quote character
+			newChar = obfuscQuote + obfuscQuote;
+
+		case ( runeValue >= 0x30 && runeValue <= 0x39 ):
+			// Number
+			thisdir := (dir%9)+1
+			newRune := 0x30+(int(runeValue)-0x30+thisdir)%10
+			newChar = string(newRune)
+
+		case ( runeValue >= 0x41 && runeValue <= 0x5A ) ||
+                     ( runeValue >= 0x61 && runeValue <= 0x7A ):
+			// ASCII letter.  Try to avoid trivial A->a mappings
+			thisdir := dir%(obfuscASCIILen/2-1)+1
+	                pos := strings.Index(obfuscASCII, string(runeValue))
+			pos=(pos+thisdir)%obfuscASCIILen
+			newChar = string(obfuscASCII[pos])
+
+		case ( runeValue >= 0xA0 && runeValue <= 0xFF ):
+			// Latin 1 supplement
+			thisdir := (dir%95)+1
+			newRune := 0xA0+(int(runeValue)-0xA0+thisdir)%96
+			newChar = string(newRune)
+
+		case (runeValue >= 0x100):
+			// Some random Unicode range; we have no good rules here
+			thisdir := dir+1
+			base:=int(runeValue-runeValue%256)
+			newRune := rune(base+(int(runeValue)-base+thisdir)%256)
+			newChar = string(newRune)
+			// If the new character isn't a valid UTF8 char
+			// then don't rotate it.  Quote it instead
+			if (!utf8.ValidString(newChar)) {
+				newChar = obfuscQuote+string(runeValue)
+			}
+
+		default:
+			// Leave character untouched
+			newChar = string(runeValue)
+		}
+
+		result += newChar
+	}
+	return result
 }
 
 func (c *cipher) deobfuscateSegment(ciphertext string) (string, error) {
@@ -332,11 +380,70 @@ func (c *cipher) deobfuscateSegment(ciphertext string) (string, error) {
 	pos := strings.Index(ciphertext,".")
 	if pos == -1 { return "", ErrorNotAnEncryptedFile }  // No .
 	num := ciphertext[:pos]
+	if num == "0" {
+		// No rotation; probably original was not valid unicode
+		return ciphertext[pos+1:],nil
+	}
 	dir,err:=strconv.Atoi(num)
 	if err!=nil {
 		return "", ErrorNotAnEncryptedFile // Not a number
 	}
-	return obfuscateRot(ciphertext[pos+1:],-dir),nil
+
+	// add the nameKey to get the real rotate distance
+	for i:= 0; i<len(c.nameKey); i++ { dir += int(c.nameKey[i]) }
+	dir = dir%127
+
+	var result string
+
+	var newChar string
+
+        inQuote:=false
+	for _,runeValue := range ciphertext[pos+1:] {
+		switch {
+		case inQuote:
+			newChar = string(runeValue)
+			inQuote=false
+
+		case string(runeValue) == obfuscQuote:
+			newChar = ""
+			inQuote=true
+
+                case ( runeValue >= 0x30 && runeValue <= 0x39 ):
+			// Number
+			thisdir := (dir%9)+1
+			newRune := 0x30+int(runeValue)-0x30-thisdir
+			if newRune < 0x30 { newRune += 10 }
+			newChar = string(newRune)
+
+		case ( runeValue >= 0x41 && runeValue <= 0x5A ) ||
+                     ( runeValue >= 0x61 && runeValue <= 0x7A ):
+			thisdir := dir%(obfuscASCIILen/2-1)+1
+	                pos := strings.Index(obfuscASCII, string(runeValue))
+			pos=(pos-thisdir)%obfuscASCIILen
+			if pos < 0 { pos += obfuscASCIILen }
+			newChar = string(obfuscASCII[pos])
+
+		case ( runeValue >= 0xA0 && runeValue <= 0xFF ):
+			thisdir := (dir%95)+1
+			newRune := 0xA0+int(runeValue)-0xA0-thisdir
+			if newRune < 0xA0 { newRune += 96 }
+			newChar = string(newRune)
+
+		case (runeValue >= 0x100):
+			thisdir := dir+1
+			base:=int(runeValue-runeValue%256)
+			newRune := rune(base+(int(runeValue)-base-thisdir))
+			if int(newRune) < base { newRune += 256 }
+			newChar = string(newRune)
+
+		default:
+			newChar = string(runeValue)
+
+		}
+		result += newChar
+	}
+
+	return result,nil
 }
 
 // encryptFileName encrypts a file path

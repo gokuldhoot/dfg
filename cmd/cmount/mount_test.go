@@ -1,3 +1,6 @@
+// +build cgo
+// +build linux darwin freebsd windows
+
 package cmount
 
 import (

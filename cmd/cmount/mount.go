@@ -11,9 +11,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
-	"runtime"
-	"syscall"
 	"time"
 
 	"github.com/billziss-gh/cgofuse/fuse"
@@ -149,7 +146,7 @@ files to be visible in the mount.
 // mountOptions configures the options from the command line flags
 func mountOptions(device string, mountpoint string) (options []string) {
 	// Options
-	options = []string{"rclone",
+	options = []string{
 		"-o", "fsname=" + device,
 		"-o", "subtype=rclone",
 		"-o", fmt.Sprintf("max_readahead=%d", maxReadAhead),
@@ -181,7 +178,6 @@ func mountOptions(device string, mountpoint string) (options []string) {
 	if writebackCache {
 		// FIXME? options = append(options, "-o", WritebackCache())
 	}
-	options = append(options, mountpoint)
 	return options
 }
 
@@ -215,7 +211,7 @@ func mount(f fs.Fs, mountpoint string) (<-chan error, func() error, error) {
 	errChan := make(chan error, 1)
 	go func() {
 		var err error
-		ok := host.Mount(options)
+		ok := host.Mount(mountpoint, options)
 		if !ok {
 			err = errors.New("mount failed")
 			fs.Errorf(f, "Mount failed")
@@ -254,28 +250,17 @@ func Mount(f fs.Fs, mountpoint string) error {
 	}
 
 	// Mount it
-	errChan, unmount, err := mount(f, mountpoint)
+	errChan, _, err := mount(f, mountpoint)
 	if err != nil {
 		return errors.Wrap(err, "failed to mount FUSE fs")
 	}
 
-	// This isn't needed under Windows as it gets unmounted by the cgofuse
-	if runtime.GOOS != "windows" {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	// Note cgofuse unmounts the fs on SIGINT etc
 
-		select {
-		// umount triggered outside the app
-		case err = <-errChan:
-			break
-		// Program abort: umount
-		case <-sigChan:
-			err = unmount()
-		}
-
-		if err != nil {
-			return errors.Wrap(err, "failed to umount FUSE fs")
-		}
+	// Wait for mount to finish
+	err = <-errChan
+	if err != nil {
+		return errors.Wrap(err, "failed to umount FUSE fs")
 	}
 
 	return nil

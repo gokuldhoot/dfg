@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/billziss-gh/cgofuse/fuse"
@@ -155,10 +156,12 @@ func mountOptions(device string, mountpoint string) (options []string) {
 		options = append(options, "-o", "debug")
 	}
 
-	// OSX options FIXME
-	// fuse.VolumeName(device),
-	// fuse.NoAppleDouble(),
-	// 	fuse.NoAppleXattr(),
+	// OSX options
+	if runtime.GOOS == "darwin" {
+		options = append(options, "-o", "volname="+device)
+		options = append(options, "-o", "noappledouble")
+		options = append(options, "-o", "noapplexattr")
+	}
 
 	if allowNonEmpty {
 		options = append(options, "-o", "nonempty")

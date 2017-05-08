@@ -24,6 +24,7 @@ import (
 // Globals
 var (
 	noModTime    = false
+	noChecksum   = false
 	debugFUSE    = false
 	noSeek       = false
 	dirCacheTime = 5 * 60 * time.Second
@@ -49,6 +50,7 @@ func init() {
 	unix.Umask(umask)     // set it back to what it was
 	cmd.Root.AddCommand(commandDefintion)
 	commandDefintion.Flags().BoolVarP(&noModTime, "no-modtime", "", noModTime, "Don't read/write the modification time (can speed things up).")
+	commandDefintion.Flags().BoolVarP(&noChecksum, "no-checksum", "", noChecksum, "Don't compare checksums on up/download.")
 	commandDefintion.Flags().BoolVarP(&debugFUSE, "debug-fuse", "", debugFUSE, "Debug the FUSE internals - needs -v.")
 	commandDefintion.Flags().BoolVarP(&noSeek, "no-seek", "", noSeek, "Don't allow seeking in files.")
 	commandDefintion.Flags().DurationVarP(&dirCacheTime, "dir-cache-time", "", dirCacheTime, "Time to cache directory entries for.")
@@ -143,10 +145,6 @@ like this:
     * those which need to know the size in advance won't - eg B2
     * maybe should pass in size as -1 to mean work it out
     * Or put in an an upload cache to cache the files on disk first
-
-### TODO ###
-
-  * Check hashes on upload/download
 `,
 	Run: func(command *cobra.Command, args []string) {
 		cmd.CheckArgs(2, 2, command, args)

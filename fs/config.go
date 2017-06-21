@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -652,7 +653,24 @@ func SaveConfig() {
 		log.Fatalf("Failed to close config file: %v", err)
 	}
 
-	err = os.Chmod(f.Name(), 0600)
+	var fileMode os.FileMode = 0600
+	info, err := os.Stat(ConfigPath)
+	if err != nil {
+		Debugf(nil, "Using default permissions for config file: %v", fileMode)
+	} else if info.Mode() != fileMode {
+		Debugf(nil, "Keeping previous permissions for config file: %v", info.Mode())
+		fileMode = info.Mode()
+	}
+
+	if err == nil && info.Sys() != nil {
+		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
+			if err = os.Chown(f.Name(), int(stat.Uid), int(stat.Gid)); err != nil {
+				Debugf(nil, "Failed to keep previous owner of config file: %v", err)
+			}
+		}
+	}
+
+	err = os.Chmod(f.Name(), fileMode)
 	if err != nil {
 		Errorf(nil, "Failed to set permissions on config file: %v", err)
 	}

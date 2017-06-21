@@ -1,7 +1,7 @@
 // Read, write and edit the config file
 // Non-unix specific functions.
 
-// +build !darwin,!dragonfly,!freebsd,!linux,!netbsd,!openbsd,!solaris,!plan9
+// +build !darwin,!dragonfly,!freebsd,!linux,!netbsd,!openbsd,!solaris
 
 package fs
 

@@ -3,6 +3,7 @@ package fs
 import (
 	"bytes"
 	"crypto/rand"
+	"io/ioutil"
 	"os"
 	"testing"
 
@@ -43,7 +44,9 @@ func TestCRUD(t *testing.T) {
 	configKey = nil // reset password
 	oldConfigFile := configFile
 	oldReadLine := ReadLine
-	path := "./testdata/crud.conf.tmp"
+	tempFile, err := ioutil.TempFile("", "crud.conf")
+	path := tempFile.Name()
+	assert.NoError(t, err)
 	configFile = &path
 	defer func() {
 		configFile = oldConfigFile

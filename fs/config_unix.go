@@ -24,8 +24,8 @@ func attemptCopyGroup(fromPath, toPath string) {
 		// prefer self over previous owner of file, because it has a higher chance
 		// of success
 		if user, err := user.Current(); err == nil {
-			if tmpUid, err := strconv.Atoi(user.Uid); err == nil {
-				uid = tmpUid
+			if tmpUID, err := strconv.Atoi(user.Uid); err == nil {
+				uid = tmpUID
 			}
 		}
 		if err = os.Chown(toPath, uid, int(stat.Gid)); err != nil {

@@ -21,7 +21,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -662,21 +661,7 @@ func SaveConfig() {
 		fileMode = info.Mode()
 	}
 
-	if err == nil && info.Sys() != nil {
-		if stat, ok := info.Sys().(*syscall.Stat_t); ok {
-			uid := int(stat.Uid)
-			// prefer self over previous owner of file, because it has a higher chance
-			// of success
-			if user, err := user.Current(); err == nil {
-				if tmpUid, err := strconv.Atoi(user.Uid); err == nil {
-					uid = tmpUid
-				}
-			}
-			if err = os.Chown(f.Name(), uid, int(stat.Gid)); err != nil {
-				Debugf(nil, "Failed to keep previous owner of config file: %v", err)
-			}
-		}
-	}
+	attemptCopyGroup(ConfigPath, f.Name())
 
 	err = os.Chmod(f.Name(), fileMode)
 	if err != nil {

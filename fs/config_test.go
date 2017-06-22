@@ -50,6 +50,7 @@ func TestCRUD(t *testing.T) {
 		err := os.Remove(path)
 		assert.NoError(t, err)
 	}()
+	assert.NoError(t, tempFile.Close())
 
 	// temporarily adapt configuration
 	oldOsStdout := os.Stdout

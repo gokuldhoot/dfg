@@ -42,20 +42,28 @@ func TestObscure(t *testing.T) {
 
 func TestCRUD(t *testing.T) {
 	configKey = nil // reset password
-	oldConfigFile := configFile
-	oldReadLine := ReadLine
+	// create temp config file
 	tempFile, err := ioutil.TempFile("", "crud.conf")
-	path := tempFile.Name()
 	assert.NoError(t, err)
-	configFile = &path
+	path := tempFile.Name()
 	defer func() {
-		configFile = oldConfigFile
-		ReadLine = oldReadLine
 		err := os.Remove(path)
 		assert.NoError(t, err)
 	}()
-	LoadConfig()
 
+	// temporarily adapt configuration
+	oldOsStdout := os.Stdout
+	oldConfigFile := configFile
+	oldReadLine := ReadLine
+	os.Stdout = nil
+	configFile = &path
+	defer func() {
+		os.Stdout = oldOsStdout
+		configFile = oldConfigFile
+		ReadLine = oldReadLine
+	}()
+
+	LoadConfig()
 	assert.Equal(t, []string{}, configData.GetSectionList())
 
 	// add new remote

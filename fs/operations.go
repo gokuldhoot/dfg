@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log"
 	"mime"
 	"path"
@@ -13,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/pkg/errors"
 	"github.com/spf13/pflag"
@@ -1508,6 +1510,46 @@ func Cat(f Fs, w io.Writer, offset, count int64) error {
 			Errorf(o, "Failed to send to output: %v", err)
 		}
 	})
+}
+
+func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser) (err error) {
+	if Config.DryRun {
+		Logf("stdin", "Not copying as --dry-run")
+		// prevents "broken pipe" errors
+		_, err := ioutil.ReadAll(in0)
+		return err
+	}
+
+	objInfo := NewStaticObjectInfo(dstFileName, time.Now(), -1, false, nil, nil)
+
+	// Find dst object if it exists
+	dstObj, err := fdst.NewObject(dstFileName)
+	if err == ErrorObjectNotFound {
+		dstObj = nil
+	} else if err != nil {
+		return
+	}
+
+	// work out which hash to use - limit to 1 hash in common
+	var common HashSet
+	hashType := HashNone
+	if !Config.SizeOnly {
+		common = fdst.Hashes().Overlap(SupportedHashes)
+		if common.Count() > 0 {
+			hashType = common.GetOne()
+			common = HashSet(hashType)
+		}
+	}
+	hashOption := &HashesOption{Hashes: common}
+
+	in := NewAccountSizeName(in0, -1, dstFileName)
+	if dstObj != nil {
+		err = dstObj.Update(in, objInfo, hashOption)
+	} else {
+		dstObj, err = fdst.Put(in, objInfo, hashOption)
+	}
+
+	return err
 }
 
 // Rmdirs removes any empty directories (or directories only

@@ -1512,7 +1512,7 @@ func Cat(f Fs, w io.Writer, offset, count int64) error {
 	})
 }
 
-func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser) (err error) {
+func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser, modTime time.Time) (err error) {
 	if Config.DryRun {
 		Logf("stdin", "Not copying as --dry-run")
 		// prevents "broken pipe" errors
@@ -1520,7 +1520,7 @@ func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser) (err error) {
 		return err
 	}
 
-	objInfo := NewStaticObjectInfo(dstFileName, time.Now(), -1, false, nil, nil)
+	objInfo := NewStaticObjectInfo(dstFileName, modTime, -1, false, nil, nil)
 
 	// Find dst object if it exists
 	dstObj, err := fdst.NewObject(dstFileName)

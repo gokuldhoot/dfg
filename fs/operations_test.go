@@ -697,6 +697,22 @@ func TestCat(t *testing.T) {
 	}
 }
 
+func TestRcat(t *testing.T) {
+	r := NewRun(t)
+	defer r.Finalise()
+
+	fstest.CheckListing(t, r.fremote, []fstest.Item{})
+
+	data := "this is some really nice test data"
+	path := "file_from_pipe"
+
+	in := ioutil.NopCloser(strings.NewReader(data))
+	fs.Rcat(r.fremote, path, in, t1)
+
+	file := fstest.NewItem(path, data, t1)
+	fstest.CheckItems(t, r.fremote, file)
+}
+
 func TestRmdirs(t *testing.T) {
 	r := NewRun(t)
 	defer r.Finalise()

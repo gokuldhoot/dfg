@@ -3,6 +3,7 @@ package rcat
 import (
 	"log"
 	"os"
+	"time"
 
 	"github.com/ncw/rclone/cmd"
 	"github.com/ncw/rclone/fs"
@@ -38,7 +39,7 @@ then ` + "`rclone move`" + ` it to the destination.
 
 		fdst, dstFileName := cmd.NewFsDstFile(args)
 		cmd.Run(false, false, command, func() error {
-			return fs.Rcat(fdst, dstFileName, os.Stdin)
+			return fs.Rcat(fdst, dstFileName, os.Stdin, time.Now())
 		})
 	},
 }

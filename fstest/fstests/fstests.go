@@ -860,6 +860,7 @@ func TestObjectRemove(t *testing.T) {
 	fstest.CheckListing(t, remote, []fstest.Item{file2})
 }
 
+// TestFsPutUnknownLengthFile tests uploading files when size is not known in advance
 func TestFsPutUnknownLengthFile(t *testing.T) {
 	skipIfNotOk(t)
 

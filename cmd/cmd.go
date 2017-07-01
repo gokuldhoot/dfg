@@ -203,6 +203,7 @@ func NewFsDst(args []string) fs.Fs {
 	return fdst
 }
 
+// NewFsDstFile creates a new dst fs with a destination file name from the arguments
 func NewFsDstFile(args []string) (fdst fs.Fs, dstFileName string) {
 	dstRemote, dstFileName := fs.RemoteSplit(args[0])
 	if dstRemote == "" {

@@ -1512,6 +1512,7 @@ func Cat(f Fs, w io.Writer, offset, count int64) error {
 	})
 }
 
+// Rcat reads data from the Reader until EOF and uploads it to a file on remote
 func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser, modTime time.Time) (err error) {
 	if Config.DryRun {
 		Logf("stdin", "Not copying as --dry-run")

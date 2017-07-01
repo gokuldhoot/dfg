@@ -707,7 +707,8 @@ func TestRcat(t *testing.T) {
 	path := "file_from_pipe"
 
 	in := ioutil.NopCloser(strings.NewReader(data))
-	fs.Rcat(r.fremote, path, in, t1)
+	err := fs.Rcat(r.fremote, path, in, t1)
+	require.NoError(t, err)
 
 	file := fstest.NewItem(path, data, t1)
 	fstest.CheckItems(t, r.fremote, file)

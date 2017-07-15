@@ -1519,13 +1519,6 @@ func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser, modTime time.Time) (er
 		Stats.DoneTransferring(dstFileName, err == nil)
 	}()
 
-	if Config.DryRun {
-		Logf("stdin", "Not copying as --dry-run")
-		// prevents "broken pipe" errors
-		_, err = io.Copy(ioutil.Discard, in0)
-		return err
-	}
-
 	objInfo := NewStaticObjectInfo(dstFileName, modTime, -1, false, nil, nil)
 
 	// work out which hash to use - limit to 1 hash in common
@@ -1540,8 +1533,15 @@ func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser, modTime time.Time) (er
 	}
 	hashOption := &HashesOption{Hashes: common}
 
-	in := NewAccountSizeName(in0, -1, dstFileName)
+	in := NewAccountSizeName(in0, -1, dstFileName).WithBuffer()
 	_, err = fdst.Put(in, objInfo, hashOption)
+
+	if Config.DryRun {
+		Logf("stdin", "Not copying as --dry-run")
+		// prevents "broken pipe" errors
+		_, err = io.Copy(ioutil.Discard, in)
+		return err
+	}
 
 	return err
 }

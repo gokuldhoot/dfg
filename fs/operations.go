@@ -1561,7 +1561,7 @@ func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser, modTime time.Time) (er
 
 	tmpObj, err := fStreamTo.Features().PutStream(in, objInfo, hashOption)
 	if err == nil && !canStream {
-		err = Move(fdst, nil, dstFileName, tmpObj)
+		err = Copy(fdst, nil, dstFileName, tmpObj)
 	}
 	return err
 }

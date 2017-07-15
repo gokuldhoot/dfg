@@ -443,6 +443,13 @@ func (f *Fs) Put(in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.
 	return o, o.Update(in, src, options...)
 }
 
+// PutStream uploads to the remote path with the modTime given of indeterminate size
+//
+// This supports only files of up to 300 MiB. TODO: Figure out why and fix it.
+func (f *Fs) PutStream(in io.Reader, src fs.ObjectInfo, options ...fs.OpenOption) (fs.Object, error) {
+	return f.Put(in, src, options...)
+}
+
 // Mkdir creates the container if it doesn't exist
 func (f *Fs) Mkdir(dir string) error {
 	root := path.Join(f.slashRoot, dir)
@@ -923,10 +930,11 @@ func (o *Object) Remove() (err error) {
 
 // Check the interfaces are satisfied
 var (
-	_ fs.Fs       = (*Fs)(nil)
-	_ fs.Copier   = (*Fs)(nil)
-	_ fs.Purger   = (*Fs)(nil)
-	_ fs.Mover    = (*Fs)(nil)
-	_ fs.DirMover = (*Fs)(nil)
-	_ fs.Object   = (*Object)(nil)
+	_ fs.Fs          = (*Fs)(nil)
+	_ fs.Copier      = (*Fs)(nil)
+	_ fs.Purger      = (*Fs)(nil)
+	_ fs.PutStreamer = (*Fs)(nil)
+	_ fs.Mover       = (*Fs)(nil)
+	_ fs.DirMover    = (*Fs)(nil)
+	_ fs.Object      = (*Object)(nil)
 )

@@ -1519,13 +1519,30 @@ func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser, modTime time.Time) (er
 		Stats.DoneTransferring(dstFileName, err == nil)
 	}()
 
+	fStreamTo := fdst
+	canStream := fdst.Features().PutStream != nil
+	if !canStream {
+		Debugf(fdst, "Target remote doesn't support streaming uploads, creating temporary local FS to spool file")
+		tmpLocalFs, err := temporaryLocalFs()
+		if err != nil {
+			return errors.Wrap(err, "Failed to create temporary local FS to spool file")
+		}
+		defer func() {
+			err := Purge(tmpLocalFs)
+			if err != nil {
+				Infof(tmpLocalFs, "Failed to cleanup temporary FS: %v", err)
+			}
+		}()
+		fStreamTo = tmpLocalFs
+	}
+
 	objInfo := NewStaticObjectInfo(dstFileName, modTime, -1, false, nil, nil)
 
 	// work out which hash to use - limit to 1 hash in common
 	var common HashSet
 	hashType := HashNone
 	if !Config.SizeOnly {
-		common = fdst.Hashes().Overlap(SupportedHashes)
+		common = fStreamTo.Hashes().Overlap(SupportedHashes)
 		if common.Count() > 0 {
 			hashType = common.GetOne()
 			common = HashSet(hashType)
@@ -1534,7 +1551,6 @@ func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser, modTime time.Time) (er
 	hashOption := &HashesOption{Hashes: common}
 
 	in := NewAccountSizeName(in0, -1, dstFileName).WithBuffer()
-	_, err = fdst.Put(in, objInfo, hashOption)
 
 	if Config.DryRun {
 		Logf("stdin", "Not copying as --dry-run")
@@ -1543,6 +1559,10 @@ func Rcat(fdst Fs, dstFileName string, in0 io.ReadCloser, modTime time.Time) (er
 		return err
 	}
 
+	tmpObj, err := fStreamTo.Features().PutStream(in, objInfo, hashOption)
+	if err == nil && !canStream {
+		err = Move(fdst, nil, dstFileName, tmpObj)
+	}
 	return err
 }
 

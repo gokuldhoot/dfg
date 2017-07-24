@@ -14,6 +14,18 @@
   version = "v0.10.0"
 
 [[projects]]
+  name = "github.com/Azure/azure-sdk-for-go"
+  packages = ["storage"]
+  revision = "5b6066bbd213e47c49a5fa2be2b29529bbcb6704"
+  version = "v10.1.1-beta"
+
+[[projects]]
+  name = "github.com/Azure/go-autorest"
+  packages = ["autorest","autorest/adal","autorest/azure","autorest/date"]
+  revision = "10791a4516e77c53ab10f198f144804cca3d5b43"
+  version = "v8.1.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/Unknwon/goconfig"
   packages = ["."]
@@ -54,6 +66,12 @@
   packages = ["spew"]
   revision = "346938d642f2ec3594ed81d874461961cd0faa76"
   version = "v1.1.0"
+
+[[projects]]
+  name = "github.com/dgrijalva/jwt-go"
+  packages = ["."]
+  revision = "d2709f9f1f31ebcda9651b03077758c1f3a0018c"
+  version = "v3.0.0"
 
 [[projects]]
   name = "github.com/go-ini/ini"
@@ -158,6 +176,12 @@
   version = "v1.4"
 
 [[projects]]
+  name = "github.com/satori/uuid"
+  packages = ["."]
+  revision = "879c5887cd475cd7864858769793b2ceb0d44feb"
+  version = "v1.1.0"
+
+[[projects]]
   branch = "master"
   name = "github.com/shurcooL/sanitized_anchor_name"
   packages = ["."]
@@ -250,6 +274,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "b04805ec8dc2bf704d0ad0c73e2ce9f13f3770b946a70bda8fd602886ff124a4"
+  inputs-digest = "81a6c2d95dae54394548a4eeca5858ad953b9813b1f75a4955bda19133c09ebe"
   solver-name = "gps-cdcl"
   solver-version = 1

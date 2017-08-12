@@ -27,6 +27,8 @@ type hashAppendingReader struct {
 	hexReader io.Reader
 }
 
+// Read returns bytes all bytes from the original reader, then the hex sum
+// of what was read so far, then EOF.
 func (har *hashAppendingReader) Read(b []byte) (int, error) {
 	if har.hexReader == nil {
 		n, err := har.in.Read(b)
@@ -38,20 +40,25 @@ func (har *hashAppendingReader) Read(b []byte) (int, error) {
 			har.hexReader = strings.NewReader(har.hexSum)
 		}
 		return n, err
-	} else {
-		return har.hexReader.Read(b)
 	}
+	return har.hexReader.Read(b)
 }
 
+// AdditionalLength returns how many bytes the appended hex sum will take up.
 func (har *hashAppendingReader) AdditionalLength() int {
 	return hex.EncodedLen(har.h.Size())
 }
 
+// HexSum returns the hash sum as hex. It's only available after the original
+// reader has EOF'd. It's an empty string before that.
 func (har *hashAppendingReader) HexSum() string {
 	return har.hexSum
 }
 
-func HashAppendingReader(in io.Reader, h hash.Hash) *hashAppendingReader {
+// newHashAppendingReader takes a Reader and a Hash and will append the hex sum
+// after the original reader reaches EOF. The increased size depends on the
+// given hash, which may be queried through AdditionalLength()
+func newHashAppendingReader(in io.Reader, h hash.Hash) *hashAppendingReader {
 	withHash := io.TeeReader(in, h)
 	return &hashAppendingReader{h: h, in: withHash}
 }
@@ -167,7 +174,7 @@ func (up *largeUpload) clearUploadURL() {
 
 // Transfer a chunk
 func (up *largeUpload) transferChunk(part int64, body []byte) error {
-	in := HashAppendingReader(bytes.NewReader(body), sha1.New())
+	in := newHashAppendingReader(bytes.NewReader(body), sha1.New())
 	size := int64(len(body)) + int64(in.AdditionalLength())
 
 	err := up.f.pacer.Call(func() (bool, error) {

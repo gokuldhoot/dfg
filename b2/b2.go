@@ -1251,7 +1251,7 @@ func (o *Object) Update(in io.Reader, src fs.ObjectInfo, options ...fs.OpenOptio
 	calculatedSha1, _ := src.Hash(fs.HashSHA1)
 	if calculatedSha1 == "" {
 		calculatedSha1 = "hex_digits_at_end"
-		har := HashAppendingReader(in, sha1.New())
+		har := newHashAppendingReader(in, sha1.New())
 		size += int64(har.AdditionalLength())
 		in = har
 	}
